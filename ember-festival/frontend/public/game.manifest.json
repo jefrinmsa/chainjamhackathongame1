@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "gameId": "EmberFestivalGame",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "locales": {
+    "en": {
+      "name": "Ember Festival",
+      "description": "Pick a night sky and launch a firework — the burst reveals your payout tier from a weighted paytable."
+    }
+  },
+  "presentation": {
+    "mode": "full-iframe",
+    "hostPanels": {
+      "openSession": false,
+      "history": false,
+      "status": false
+    }
+  },
+  "capabilities": {
+    "openSession": true,
+    "submitAction": false,
+    "forfeitExpiredSession": false,
+    "cancelStuckRandomness": false,
+    "resize": true
+  }
+}

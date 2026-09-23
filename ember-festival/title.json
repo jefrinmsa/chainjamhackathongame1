@@ -1,0 +1,7 @@
+{
+  "name": "Ember Festival",
+  "betConfigurations": [
+    { "name": "calm-night", "tierList": "calm-night.csv" },
+    { "name": "meteor-shower", "tierList": "meteor-shower.csv" }
+  ]
+}

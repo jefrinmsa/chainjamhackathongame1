@@ -1,0 +1,606 @@
+/* ─────────────────────────────────────────────────────────────────────
+ * Ember Festival — index.css
+ *
+ * Deep near-black-to-indigo night sky, painterly aesthetic,
+ * premium typography, smooth micro-animations.
+ * ─────────────────────────────────────────────────────────────────── */
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* Palette */
+  --sky-top: #05060f;
+  --sky-mid: #0b0e24;
+  --sky-bottom: #1a1535;
+  --ember: #f2994a;
+  --ember-glow: #ff8a3c;
+  --gold: #ffd700;
+  --phoenix-red: #ff4040;
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --dock-bg: rgba(8, 6, 20, 0.88);
+  --dock-border: rgba(255, 255, 255, 0.06);
+  --btn-bg: rgba(255, 255, 255, 0.06);
+  --btn-bg-hover: rgba(255, 255, 255, 0.10);
+  --btn-active: var(--ember);
+
+  /* Typography */
+  --font-display: 'Cinzel', serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  /* Transitions */
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--sky-top);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Shell layout ───────────────────────────────────────────────────── */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  pointer-events: none;
+}
+
+.header > * {
+  pointer-events: auto;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-shadow: 0 0 30px rgba(242, 153, 74, 0.3);
+}
+
+.sound-toggle {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  transition: background 0.2s var(--ease-smooth);
+}
+
+.sound-toggle:hover {
+  background: var(--btn-bg-hover);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Tier preview controls for judges and review */
+.preview-pills {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(12, 10, 28, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 3px 8px;
+  backdrop-filter: blur(8px);
+}
+
+.preview-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 0 4px;
+}
+
+.preview-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all 0.18s var(--ease-smooth);
+}
+
+.preview-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--ember);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.preview-btn--phoenix {
+  border-color: rgba(255, 180, 0, 0.3);
+  color: #ffe6a0;
+}
+
+.preview-btn--active {
+  background: var(--ember) !important;
+  color: #0b0e24 !important;
+  font-weight: 700 !important;
+  border-color: #fff !important;
+  box-shadow: 0 0 10px rgba(242, 153, 74, 0.6) !important;
+}
+
+.preview-btn--phoenix.preview-btn--active {
+  background: linear-gradient(135deg, #ff4040, #ffb400) !important;
+  color: #fff !important;
+  border-color: #fff !important;
+  box-shadow: 0 0 14px rgba(255, 180, 0, 0.7) !important;
+}
+
+/* ── Stage ──────────────────────────────────────────────────────────── */
+
+.stage {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Connecting ─────────────────────────────────────────────────────── */
+
+.connecting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  background: linear-gradient(180deg, var(--sky-top), var(--sky-mid), var(--sky-bottom));
+}
+
+.connecting-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--ember);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Result overlay ─────────────────────────────────────────────────── */
+
+.result-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  animation: fadeIn 0.6s var(--ease-smooth);
+}
+
+.result-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 40px;
+  border-radius: 16px;
+  background: rgba(8, 6, 20, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 60px rgba(242, 153, 74, 0.15),
+    0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: cardPop 0.5s var(--ease-smooth);
+}
+
+.result-tier {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+}
+
+.result-multiplier {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+.result-payout {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #4ceb8e;
+}
+
+.result-payout--miss {
+  color: var(--text-secondary);
+}
+
+.result-dismiss {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cardPop {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* ── History ────────────────────────────────────────────────────────── */
+
+.history {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 180px;
+}
+
+.history-row {
+  display: flex;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+}
+
+.history-id {
+  opacity: 0.5;
+  min-width: 28px;
+}
+
+.history-tier {
+  flex: 1;
+}
+
+.history-payout {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── Betting Dock ───────────────────────────────────────────────────── */
+
+.betting-dock {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  min-height: 15vh;
+  max-height: 20vh;
+  background: var(--dock-bg);
+  backdrop-filter: blur(24px);
+  border-top: 1px solid var(--dock-border);
+  transition: opacity 0.4s var(--ease-smooth);
+}
+
+.dock-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Night-type toggle ──────────────────────────────────────────────── */
+
+.dock-toggle {
+  gap: 4px;
+}
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s var(--ease-smooth);
+}
+
+.toggle-btn:hover:not(:disabled) {
+  background: var(--btn-bg-hover);
+  color: var(--text-primary);
+}
+
+.toggle-btn--active {
+  background: rgba(242, 153, 74, 0.15);
+  border-color: rgba(242, 153, 74, 0.4);
+  color: var(--ember);
+}
+
+.toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toggle-icon {
+  font-size: 1rem;
+}
+
+.toggle-label {
+  white-space: nowrap;
+}
+
+/* ── Bet stepper ────────────────────────────────────────────────────── */
+
+.dock-bet {
+  gap: 2px;
+}
+
+.step-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+}
+
+.step-btn:hover:not(:disabled) {
+  background: var(--btn-bg-hover);
+}
+
+.step-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.bet-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.bet-input {
+  width: 80px;
+  height: 34px;
+  padding: 0 28px 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s var(--ease-smooth);
+}
+
+.bet-input:focus {
+  border-color: rgba(242, 153, 74, 0.4);
+}
+
+.bet-input:disabled {
+  opacity: 0.4;
+}
+
+.bet-symbol {
+  position: absolute;
+  right: 8px;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* ── Balance ────────────────────────────────────────────────────────── */
+
+.dock-balance {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 0 10px;
+}
+
+.balance-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.balance-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── Launch button ──────────────────────────────────────────────────── */
+
+.launch-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 28px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--ember), var(--ember-glow));
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow:
+    0 0 20px rgba(242, 153, 74, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.25s var(--ease-smooth);
+}
+
+.launch-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 32px rgba(242, 153, 74, 0.45),
+    0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.launch-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.launch-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.launch-icon {
+  font-size: 1.1rem;
+}
+
+.launch-text {
+  white-space: nowrap;
+}
+
+/* ── Error / reason ─────────────────────────────────────────────────── */
+
+.dock-reason {
+  width: 100%;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #ff6b6b;
+  padding-top: 2px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .betting-dock {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .toggle-label {
+    display: none;
+  }
+
+  .toggle-btn {
+    padding: 7px 10px;
+  }
+
+  .bet-input {
+    width: 64px;
+  }
+
+  .launch-btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+  }
+}
+
+/* ── Title & Demo Chip ──────────────────────────────────────────────── */
+
+.title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.demo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ember);
+  background: rgba(242, 153, 74, 0.12);
+  border: 1px solid rgba(242, 153, 74, 0.35);
+  box-shadow: 0 0 12px rgba(242, 153, 74, 0.15);
+}
+
+/* ── Chain Jam Entry Widget ────────────────────────────────────────── */
+/* Lift the badge cleanly above the betting dock so it never overlaps   */
+/* the Launch button, bet input, or balance on any screen size.         */
+#chain-jam-badge {
+  bottom: calc(18vh + 12px) !important;
+  right: 16px !important;
+  z-index: 25 !important;
+}
+
+@media (max-width: 640px) {
+  #chain-jam-badge {
+    bottom: calc(22vh + 10px) !important;
+    right: 10px !important;
+    transform: scale(0.88) rotate(-1.5deg) !important;
+  }
+}
+

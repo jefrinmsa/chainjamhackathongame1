@@ -1,0 +1,5 @@
+packages:
+  - simulator
+  - local-verify-network
+  - slot-engine
+  - 'examples/*'
