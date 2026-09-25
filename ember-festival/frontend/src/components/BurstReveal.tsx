@@ -15,7 +15,7 @@
  * ─────────────────────────────────────────────────────────────────── */
 
 import { useEffect, useRef, useCallback } from 'react';
-import type { TierName } from '../types/game.ts';
+import type { BetConfigName, TierName } from '../types/game.ts';
 import {
   playLaunchWhoosh,
   playTierSound,
@@ -201,27 +201,82 @@ export type BurstRevealProps = {
   tier: TierName | undefined;
   onAnimationDone: () => void;
   soundEnabled: boolean;
+  configName?: BetConfigName;
 };
 
-export function BurstReveal({ tier, onAnimationDone, soundEnabled }: BurstRevealProps) {
+// ── Color Interpolation Helpers ───────────────────────────────────────
+function lerpVal(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function lerpColor(c1: [number, number, number], c2: [number, number, number], t: number): string {
+  const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+  const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+  const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+export function BurstReveal({
+  tier,
+  onAnimationDone,
+  soundEnabled,
+  configName = 'calm-night',
+}: BurstRevealProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<EngineState | null>(null);
   const rafRef = useRef<number>(0);
   const onDoneRef = useRef(onAnimationDone);
   onDoneRef.current = onAnimationDone;
 
-  // Starfield backdrop
-  const starsRef = useRef<Array<{ x: number; y: number; r: number; a: number; pulseSpeed: number }>>([]);
+  // Mode transition state (0 = calm-night, 1 = meteor-shower)
+  const targetMode = configName === 'meteor-shower' ? 1 : 0;
+  const modeTransitionRef = useRef(targetMode);
+  const targetModeRef = useRef(targetMode);
+  targetModeRef.current = targetMode;
+
+  // Active launch/burst ambient fade factor (1 = idle ambient visible, 0 = hidden during burst)
+  const ambientFadeRef = useRef(1.0);
+
+  // Tiered ambient meteors for Meteor Shower mode
+  type AmbientMeteor = {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    length: number;
+    width: number;
+    age: number;
+    lifetime: number;
+    color: string;
+    coreColor: string;
+    rarity: 'common' | 'uncommon' | 'rare';
+  };
+  const meteorsRef = useRef<AmbientMeteor[]>([]);
+  const meteorTimerRef = useRef(1.2 + Math.random() * 2.0);
+
+  // Starfield backdrop with drift
+  type AmbientStar = {
+    baseX: number;
+    baseY: number;
+    r: number;
+    a: number;
+    pulseSpeed: number;
+    driftVx: number;
+    driftVy: number;
+  };
+  const starsRef = useRef<AmbientStar[]>([]);
 
   const initStars = useCallback((w: number, h: number) => {
-    const stars: typeof starsRef.current = [];
-    for (let i = 0; i < 150; i++) {
+    const stars: AmbientStar[] = [];
+    for (let i = 0; i < 180; i++) {
       stars.push({
-        x: Math.random() * w,
-        y: Math.random() * h * 0.88,
-        r: Math.random() * 1.3 + 0.3,
-        a: Math.random() * 0.6 + 0.2,
-        pulseSpeed: 1 + Math.random() * 3,
+        baseX: Math.random() * w,
+        baseY: Math.random() * h * 0.88,
+        r: Math.random() * 1.4 + 0.35,
+        a: Math.random() * 0.55 + 0.25,
+        pulseSpeed: 1.5 + Math.random() * 3.5,
+        driftVx: (Math.random() - 0.5) * 2.8,
+        driftVy: (Math.random() - 0.5) * 0.9,
       });
     }
     starsRef.current = stars;
@@ -856,10 +911,12 @@ export function BurstReveal({ tier, onAnimationDone, soundEnabled }: BurstReveal
     const resize = () => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      const rw = rect.width || window.innerWidth;
+      const rh = rect.height || window.innerHeight;
+      canvas.width = rw * dpr;
+      canvas.height = rh * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (starsRef.current.length === 0) initStars(rect.width, rect.height);
+      if (starsRef.current.length === 0 && rw > 0) initStars(rw, rh);
     };
     resize();
     window.addEventListener('resize', resize);
@@ -872,8 +929,14 @@ export function BurstReveal({ tier, onAnimationDone, soundEnabled }: BurstReveal
       last = now;
 
       const rect = canvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
+      const w = rect.width || window.innerWidth;
+      const h = rect.height || window.innerHeight;
+      if (w <= 0 || h <= 0) return;
+
+      if (starsRef.current.length === 0) {
+        initStars(w, h);
+      }
+
       const anim = engineRef.current;
 
       // ── Handle Screen Shake ──────────────────────────────────────────
@@ -886,34 +949,299 @@ export function BurstReveal({ tier, onAnimationDone, soundEnabled }: BurstReveal
         ctx.translate(sx, sy);
       }
 
+      // ── Mode Transition Crossfade (smooth 300-500ms ease) ───────────
+      const targetM = targetModeRef.current;
+      const modeDiff = targetM - modeTransitionRef.current;
+      modeTransitionRef.current += modeDiff * Math.min(dt * 5.0, 1.0);
+      const mode = Math.max(0, Math.min(1, modeTransitionRef.current));
+
       // ── Draw Night Sky Background ────────────────────────────────────
+      // Calm Night (deep indigo/violet) vs Meteor Shower (charged deep crimson-amber-violet)
+      const stop0 = lerpColor([3, 5, 14], [14, 3, 16], mode);
+      const stop1 = lerpColor([8, 11, 32], [26, 8, 28], mode);
+      const stop2 = lerpColor([14, 18, 52], [42, 12, 34], mode);
+      const stop3 = lerpColor([24, 18, 48], [54, 18, 30], mode);
+
       const skyGrad = ctx.createLinearGradient(0, 0, 0, h);
-      skyGrad.addColorStop(0, '#04050d');
-      skyGrad.addColorStop(0.5, '#090c1f');
-      skyGrad.addColorStop(0.85, '#101432');
-      skyGrad.addColorStop(1, '#18132e');
+      skyGrad.addColorStop(0, stop0);
+      skyGrad.addColorStop(0.5, stop1);
+      skyGrad.addColorStop(0.85, stop2);
+      skyGrad.addColorStop(1, stop3);
       ctx.fillStyle = skyGrad;
       ctx.fillRect(-20, -20, w + 40, h + 40);
 
-      // Starfield with subtle twinkle
+      // ── Faint Distant Cloud Wisps (drifting smoothly across upper sky) ─
+      const cloudLayers = [
+        {
+          yRatio: 0.18,
+          width: 520,
+          height: 60,
+          speed: 8.5,
+          calmColor: 'rgba(95, 75, 160, 0.085)',
+          meteorColor: 'rgba(175, 60, 90, 0.11)',
+        },
+        {
+          yRatio: 0.32,
+          width: 620,
+          height: 75,
+          speed: 13.0,
+          calmColor: 'rgba(75, 60, 135, 0.07)',
+          meteorColor: 'rgba(155, 50, 80, 0.095)',
+        },
+      ];
+      for (const cloud of cloudLayers) {
+        const cycle = w + cloud.width * 2;
+        const cloudX = ((now * 0.001 * cloud.speed) % cycle) - cloud.width;
+        const cloudY = h * cloud.yRatio;
+
+        const cloudGrad = ctx.createRadialGradient(
+          cloudX,
+          cloudY,
+          0,
+          cloudX,
+          cloudY,
+          cloud.width * 0.5,
+        );
+        const cloudCol = mode < 0.5 ? cloud.calmColor : cloud.meteorColor;
+        cloudGrad.addColorStop(0, cloudCol);
+        cloudGrad.addColorStop(0.55, cloudCol);
+        cloudGrad.addColorStop(1, 'transparent');
+
+        ctx.save();
+        ctx.fillStyle = cloudGrad;
+        ctx.beginPath();
+        ctx.ellipse(cloudX, cloudY, cloud.width * 0.5, cloud.height, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ── Starfield with subtle twinkle & slow parallax drift ──────────
       const starDim = anim ? anim.dimAlpha * 0.8 : 0;
       for (const star of starsRef.current) {
-        const pulse = 0.7 + Math.sin(now * 0.002 * star.pulseSpeed) * 0.3;
+        const pulse = 0.6 + Math.sin(now * 0.0025 * star.pulseSpeed) * 0.4;
         const effectiveAlpha = Math.max(0, star.a * pulse - starDim);
         if (effectiveAlpha <= 0) continue;
+
+        let sx = (star.baseX + star.driftVx * (now * 0.001)) % w;
+        if (sx < 0) sx += w;
+        let sy = (star.baseY + star.driftVy * (now * 0.001)) % (h * 0.88);
+        if (sy < 0) sy += h * 0.88;
+
         ctx.beginPath();
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(225, 230, 255, ${effectiveAlpha})`;
+        ctx.arc(sx, sy, star.r, 0, Math.PI * 2);
+        const starR = Math.round(lerpVal(220, 255, mode));
+        const starG = Math.round(lerpVal(235, 230, mode));
+        const starB = Math.round(lerpVal(255, 210, mode));
+        ctx.fillStyle = `rgba(${starR}, ${starG}, ${starB}, ${effectiveAlpha})`;
         ctx.fill();
       }
 
-      // Horizon atmospheric glow
-      const horizonGrad = ctx.createLinearGradient(0, h * 0.86, 0, h);
+      // ── Active Launch/Burst Ambient Fade ────────────────────────────
+      const isBurstActive = anim && anim.phase !== 'idle' && anim.phase !== 'done';
+      const targetAmbientFade = isBurstActive ? 0.0 : 1.0;
+      ambientFadeRef.current += (targetAmbientFade - ambientFadeRef.current) * Math.min(dt * 6.0, 1.0);
+      const ambientFade = ambientFadeRef.current;
+
+      // ── Calm Night: Soft Atmospheric Moon (upper sky, serene breathing halo) ──
+      const moonAlpha = (1 - mode) * ambientFade;
+      if (moonAlpha > 0.01) {
+        const moonX = w * 0.17;
+        const moonY = h * 0.16;
+        const moonRadius = Math.max(14, Math.min(22, w * 0.024));
+        const moonPulse = 0.93 + Math.sin(now * 0.000628) * 0.07; // 10s subtle breath cycle
+
+        ctx.save();
+        // Outer soft atmospheric halo
+        const moonHalo = ctx.createRadialGradient(
+          moonX,
+          moonY,
+          moonRadius * 0.6,
+          moonX,
+          moonY,
+          moonRadius * 4.2 * moonPulse,
+        );
+        moonHalo.addColorStop(0, `rgba(240, 235, 255, ${0.18 * moonAlpha * moonPulse})`);
+        moonHalo.addColorStop(0.35, `rgba(180, 160, 245, ${0.08 * moonAlpha * moonPulse})`);
+        moonHalo.addColorStop(0.7, `rgba(110, 80, 200, ${0.025 * moonAlpha})`);
+        moonHalo.addColorStop(1, 'transparent');
+
+        ctx.fillStyle = moonHalo;
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonRadius * 4.2 * moonPulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inner soft luminous moon disk
+        const moonDisk = ctx.createRadialGradient(
+          moonX - moonRadius * 0.28,
+          moonY - moonRadius * 0.28,
+          moonRadius * 0.1,
+          moonX,
+          moonY,
+          moonRadius,
+        );
+        moonDisk.addColorStop(0, `rgba(255, 252, 242, ${0.94 * moonAlpha})`);
+        moonDisk.addColorStop(0.65, `rgba(242, 236, 218, ${0.88 * moonAlpha})`);
+        moonDisk.addColorStop(1, `rgba(215, 200, 185, ${0.65 * moonAlpha})`);
+
+        ctx.fillStyle = moonDisk;
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Soft subtle crescent/limb shadow for organic depth
+        ctx.beginPath();
+        ctx.arc(moonX + moonRadius * 0.35, moonY - moonRadius * 0.15, moonRadius * 0.88, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(14, 18, 50, ${0.14 * moonAlpha})`;
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // ── Meteor Shower: Tiered Ambient Streaking Meteors ───────────────
+      const meteorActiveAlpha = mode * ambientFade;
+      if (meteorActiveAlpha > 0.02) {
+        meteorTimerRef.current -= dt;
+        if (meteorTimerRef.current <= 0) {
+          const spawnInterval = (1.8 + Math.random() * 2.6) / (0.4 + 0.6 * mode);
+          meteorTimerRef.current = spawnInterval;
+
+          const rand = Math.random();
+          let rarity: 'common' | 'uncommon' | 'rare' = 'common';
+          let len = 52 + Math.random() * 32;
+          let width = 1.4;
+          let spd = 620 + Math.random() * 220;
+          let lifetime = 0.42 + Math.random() * 0.20;
+          let color = 'hsl(45, 90%, 82%)';
+          let coreColor = '#ffffff';
+
+          if (rand < 0.06) {
+            // RARE (6%): Large, luminous fireball bolide with ember sparks
+            rarity = 'rare';
+            len = 160 + Math.random() * 70;
+            width = 3.6;
+            spd = 380 + Math.random() * 120;
+            lifetime = 0.85 + Math.random() * 0.25;
+            color = 'hsl(28, 100%, 65%)';
+            coreColor = 'hsl(52, 100%, 96%)';
+          } else if (rand < 0.26) {
+            // UNCOMMON (20%): Medium bright streak with warm apricot/gold core
+            rarity = 'uncommon';
+            len = 95 + Math.random() * 45;
+            width = 2.4;
+            spd = 490 + Math.random() * 160;
+            lifetime = 0.60 + Math.random() * 0.22;
+            color = 'hsl(38, 100%, 75%)';
+            coreColor = 'hsl(55, 100%, 96%)';
+          }
+
+          const startX = Math.random() * w * 0.90;
+          const startY = Math.random() * h * 0.38;
+          // Varied trajectory angle: ~22° to 52° diagonal
+          const angle = Math.PI * 0.20 + (Math.random() - 0.5) * 0.32;
+
+          meteorsRef.current.push({
+            x: startX,
+            y: startY,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd,
+            length: len,
+            width,
+            age: 0,
+            lifetime,
+            color,
+            coreColor,
+            rarity,
+          });
+        }
+      }
+
+      // Update & Render Ambient Meteors
+      for (let i = meteorsRef.current.length - 1; i >= 0; i--) {
+        const m = meteorsRef.current[i];
+        m.age += dt;
+        if (m.age >= m.lifetime) {
+          meteorsRef.current.splice(i, 1);
+          continue;
+        }
+
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+
+        const progress = m.age / m.lifetime;
+        const fade = Math.sin(progress * Math.PI) * meteorActiveAlpha;
+        if (fade <= 0.01) continue;
+
+        const speed = Math.hypot(m.vx, m.vy);
+        const tailX = m.x - (m.vx / speed) * m.length;
+        const tailY = m.y - (m.vy / speed) * m.length;
+
+        // Rare bolide emits micro glitter sparks
+        if (m.rarity === 'rare' && Math.random() < 0.35 && anim) {
+          anim.glitters.push({
+            x: m.x - (m.vx / speed) * (Math.random() * m.length * 0.4),
+            y: m.y - (m.vy / speed) * (Math.random() * m.length * 0.4),
+            vx: (Math.random() - 0.5) * 15,
+            vy: (Math.random() - 0.5) * 15,
+            radius: 1.6 + Math.random() * 1.2,
+            color: 'hsl(35, 100%, 75%)',
+            alpha: 0.8 * fade,
+            twinkleSpeed: 10,
+            twinklePhase: Math.random() * Math.PI,
+            decay: 2.8,
+          });
+        }
+
+        // Streak line with gradient
+        const streakGrad = ctx.createLinearGradient(m.x, m.y, tailX, tailY);
+        streakGrad.addColorStop(0, m.coreColor.replace(')', `, ${0.98 * fade})`).replace('hsl', 'hsla'));
+        streakGrad.addColorStop(0.20, m.color.replace(')', `, ${0.85 * fade})`).replace('hsl', 'hsla'));
+        streakGrad.addColorStop(0.70, m.color.replace(')', `, ${0.25 * fade})`).replace('hsl', 'hsla'));
+        streakGrad.addColorStop(1, 'transparent');
+
+        ctx.save();
+        ctx.strokeStyle = streakGrad;
+        ctx.lineWidth = m.width;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(tailX, tailY);
+        ctx.stroke();
+
+        // Luminous incandescent meteor head
+        if (m.rarity === 'rare') {
+          const headGlow = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 10);
+          headGlow.addColorStop(0, `rgba(255, 255, 255, ${fade})`);
+          headGlow.addColorStop(0.4, `rgba(255, 180, 80, ${0.6 * fade})`);
+          headGlow.addColorStop(1, 'transparent');
+          ctx.fillStyle = headGlow;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 10, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, m.width * 0.9, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${fade})`;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // ── Horizon Atmospheric Glow (pulsing, mode-reactive) ────────────
+      // Calm: 10s cycle (0.000628 rad/ms); Meteor: 6.5s cycle (0.000966 rad/ms)
+      const pulseRate = lerpVal(0.000628, 0.000966, mode);
+      const horizonPulse = 0.72 + Math.sin(now * pulseRate) * 0.28;
+      const horizonGrad = ctx.createLinearGradient(0, h * 0.80, 0, h);
       horizonGrad.addColorStop(0, 'transparent');
-      horizonGrad.addColorStop(0.6, 'rgba(100, 70, 160, 0.06)');
-      horizonGrad.addColorStop(1, 'rgba(160, 90, 50, 0.05)');
+
+      const glowAlpha1 = lerpVal(0.07, 0.14, mode) * horizonPulse;
+      const glowAlpha2 = lerpVal(0.08, 0.18, mode) * horizonPulse;
+      const glowCol1 = mode < 0.5 ? `rgba(105, 72, 170, ${glowAlpha1})` : `rgba(195, 55, 110, ${glowAlpha1})`;
+      const glowCol2 = mode < 0.5 ? `rgba(175, 92, 48, ${glowAlpha2})` : `rgba(240, 115, 45, ${glowAlpha2})`;
+
+      horizonGrad.addColorStop(0.55, glowCol1);
+      horizonGrad.addColorStop(1, glowCol2);
       ctx.fillStyle = horizonGrad;
-      ctx.fillRect(0, h * 0.86, w, h * 0.14);
+      ctx.fillRect(0, h * 0.80, w, h * 0.20);
 
       if (!anim || anim.phase === 'idle') {
         ctx.restore();

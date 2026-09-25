@@ -13,6 +13,8 @@ export const BET_CONFIGS = {
     index: 0,
     gameData: '0x00' as Hex,
     prizeDenominator: 5n,
+    rtpPercent: '95.22%',
+    topPrizeLabel: 'up to 6x',
     /** Maps prizeUnits → tier name. Keys are the exact prizeUnits from the compiled CSV. */
     tiers: new Map<bigint, TierName>([
       [0n, 'Fizzle'],
@@ -34,6 +36,8 @@ export const BET_CONFIGS = {
     index: 1,
     gameData: '0x01' as Hex,
     prizeDenominator: 2n,
+    rtpPercent: '95.00%',
+    topPrizeLabel: 'up to 500x',
     tiers: new Map<bigint, TierName>([
       [0n, 'Fizzle'],
       [3n, 'Small Bloom'],       // 1.5 × 2 = 3
@@ -67,6 +71,8 @@ export type BetConfig = {
   index: number;
   gameData: Hex;
   prizeDenominator: bigint;
+  rtpPercent: string;
+  topPrizeLabel: string;
   tiers: Map<bigint, TierName>;
   multiplierLabels: Map<bigint, string>;
 };

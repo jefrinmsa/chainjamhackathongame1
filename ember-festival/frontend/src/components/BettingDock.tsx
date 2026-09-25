@@ -8,7 +8,7 @@
 
 import { useCallback } from 'react';
 import { formatUnits, parseUnits } from 'viem';
-import type { BetConfigName } from '../types/game.ts';
+import { BET_CONFIGS, type BetConfigName } from '../types/game.ts';
 
 export type BettingDockProps = {
   configName: BetConfigName;
@@ -88,19 +88,25 @@ export function BettingDock({
           className={`toggle-btn ${configName === 'calm-night' ? 'toggle-btn--active' : ''}`}
           onClick={() => onConfigChange('calm-night')}
           disabled={inFlight}
-          title="Calm Night — frequent small wins, top prize 6x"
+          title={`Calm Night — frequent small wins, ${BET_CONFIGS['calm-night'].topPrizeLabel}`}
         >
           <span className="toggle-icon">🌙</span>
-          <span className="toggle-label">Calm Night</span>
+          <div className="toggle-text">
+            <span className="toggle-label">Calm Night</span>
+            <span className="toggle-sublabel">{BET_CONFIGS['calm-night'].topPrizeLabel}</span>
+          </div>
         </button>
         <button
           className={`toggle-btn ${configName === 'meteor-shower' ? 'toggle-btn--active' : ''}`}
           onClick={() => onConfigChange('meteor-shower')}
           disabled={inFlight}
-          title="Meteor Shower — rare huge wins, top prize 500x"
+          title={`Meteor Shower — rare huge wins, ${BET_CONFIGS['meteor-shower'].topPrizeLabel}`}
         >
           <span className="toggle-icon">☄️</span>
-          <span className="toggle-label">Meteor Shower</span>
+          <div className="toggle-text">
+            <span className="toggle-label">Meteor Shower</span>
+            <span className="toggle-sublabel">{BET_CONFIGS['meteor-shower'].topPrizeLabel}</span>
+          </div>
         </button>
       </div>
 
@@ -125,9 +131,17 @@ export function BettingDock({
         </button>
       </div>
 
-      {/* Balance display */}
+      {/* Balance & RTP display */}
       <div className="dock-section dock-balance">
-        <span className="balance-label">Balance</span>
+        <div className="balance-header">
+          <span className="balance-label">Balance</span>
+          <span
+            className="rtp-badge"
+            title={`${BET_CONFIGS[configName].rtpPercent} declared compiler-verified Return to Player`}
+          >
+            {BET_CONFIGS[configName].rtpPercent} RTP
+          </span>
+        </div>
         <span className="balance-value">
           {balance === undefined ? '—' : formatUnits(balance, decimals)} {symbol}
         </span>

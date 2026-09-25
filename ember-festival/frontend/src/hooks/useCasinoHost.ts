@@ -6,52 +6,25 @@ import {
   type HostSnapshotV1,
   observeGameContentSize,
 } from '@chain/casino-sdk/guest';
-import { createDemoHost } from '../lib/demoHost.ts';
 
 type SnapshotListener = (snapshot: HostSnapshotV1 | null) => void;
 
 type HostBridge = {
-  connection?: GuestBridgeConnection;
-  hostApi?: HostApiV1;
+  connection: GuestBridgeConnection;
   listeners: Set<SnapshotListener>;
   latest: HostSnapshotV1 | null;
-  isStandalone: boolean;
+  parentApi: HostApiV1 | null;
 };
 
 let bridge: HostBridge | undefined;
 
-function getHostBridge(): HostBridge {
+function hostBridge(): HostBridge {
   if (bridge) return bridge;
-
-  const isStandalone =
-    typeof window !== 'undefined' &&
-    (window.self === window.top ||
-      new URLSearchParams(window.location.search).has('demo'));
-
   const listeners = new Set<SnapshotListener>();
-
-  if (isStandalone) {
-    const demo = createDemoHost(snap => {
-      if (bridge) {
-        bridge.latest = snap;
-        bridge.listeners.forEach(l => l(snap));
-      }
-    });
-
-    bridge = {
-      hostApi: demo.hostApi,
-      listeners,
-      latest: demo.getSnapshot(),
-      isStandalone: true,
-    };
-    return bridge;
-  }
-
-  // Running inside an iframe — connect to the host SDK
   const created: HostBridge = {
     listeners,
     latest: null,
-    isStandalone: false,
+    parentApi: null,
     connection: connectGameToHost({
       async setState(snapshot) {
         created.latest = snapshot;
@@ -59,99 +32,74 @@ function getHostBridge(): HostBridge {
       },
     }),
   };
+
+  void created.connection.promise
+    .then(parent => {
+      created.parentApi = parent;
+    })
+    .catch(() => {});
+
   bridge = created;
   return created;
 }
 
 export function useCasinoHost() {
-  const currentBridge = getHostBridge();
-  const [hostApi, setHostApi] = useState<HostApiV1 | null>(
-    currentBridge.hostApi ?? null,
-  );
-  const [snapshot, setSnapshot] = useState<HostSnapshotV1 | null>(
-    currentBridge.latest,
-  );
-  const [isStandalone, setIsStandalone] = useState(currentBridge.isStandalone);
+  const isTopLevel = typeof window !== 'undefined' && window.self === window.top;
+  const currentBridge = isTopLevel ? undefined : hostBridge();
+
+  const [hostApi, setHostApi] = useState<HostApiV1 | null>(() => currentBridge?.parentApi ?? null);
+  const [snapshot, setSnapshot] = useState<HostSnapshotV1 | null>(() => currentBridge?.latest ?? null);
+  const [connectionTimedOut, setConnectionTimedOut] = useState(isTopLevel);
 
   useEffect(function subscribeToHost() {
-    const b = getHostBridge();
+    if (isTopLevel) {
+      setConnectionTimedOut(true);
+      return;
+    }
+
+    const b = hostBridge();
     let mounted = true;
     b.listeners.add(setSnapshot);
-    setSnapshot(b.latest);
+    if (b.latest) setSnapshot(b.latest);
+    if (b.parentApi) setHostApi(b.parentApi);
 
-    if (b.hostApi) {
-      setHostApi(b.hostApi);
-      setIsStandalone(b.isStandalone);
-      return () => {
-        mounted = false;
-        b.listeners.delete(setSnapshot);
-      };
-    }
+    // If host hasn't connected after 3.5s in iframe, trigger fallback
+    const timer = setTimeout(() => {
+      if (mounted && !b.parentApi) {
+        setConnectionTimedOut(true);
+      }
+    }, 3500);
 
-    if (b.connection) {
-      // Fallback timer: if running in an unconnected iframe, don't stall indefinitely
-      const fallbackTimer = setTimeout(() => {
-        if (mounted && !b.hostApi) {
-          const demo = createDemoHost(snap => {
-            b.latest = snap;
-            b.listeners.forEach(l => l(snap));
-          });
-          b.hostApi = demo.hostApi;
-          b.latest = demo.getSnapshot();
-          b.isStandalone = true;
-          setHostApi(demo.hostApi);
-          setSnapshot(demo.getSnapshot());
-          setIsStandalone(true);
+    void b.connection.promise
+      .then(parent => {
+        clearTimeout(timer);
+        b.parentApi = parent;
+        if (mounted) {
+          setHostApi(parent);
+          setConnectionTimedOut(false);
         }
-      }, 3500);
-
-      void b.connection.promise
-        .then(parent => {
-          clearTimeout(fallbackTimer);
-          if (mounted) {
-            b.hostApi = parent;
-            setHostApi(parent);
-            setIsStandalone(false);
-          }
-        })
-        .catch(() => {
-          clearTimeout(fallbackTimer);
-          if (mounted) {
-            const demo = createDemoHost(snap => {
-              b.latest = snap;
-              b.listeners.forEach(l => l(snap));
-            });
-            b.hostApi = demo.hostApi;
-            b.latest = demo.getSnapshot();
-            b.isStandalone = true;
-            setHostApi(demo.hostApi);
-            setSnapshot(demo.getSnapshot());
-            setIsStandalone(true);
-          }
-        });
-
-      return function unsubscribeFromHost() {
-        mounted = false;
-        clearTimeout(fallbackTimer);
-        b.listeners.delete(setSnapshot);
-      };
-    }
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        if (mounted) setConnectionTimedOut(true);
+      });
 
     return function unsubscribeFromHost() {
       mounted = false;
+      clearTimeout(timer);
       b.listeners.delete(setSnapshot);
     };
-  }, []);
+  }, [isTopLevel]);
 
   // Case 4 — Iframe resize reporting
   useEffect(
     function reportContentSize() {
-      if (!hostApi || isStandalone) return;
+      if (!hostApi) return;
       const observer = observeGameContentSize(hostApi);
       return () => observer.disconnect();
     },
-    [hostApi, isStandalone],
+    [hostApi],
   );
 
-  return { hostApi, snapshot, isStandalone };
+  return { hostApi, snapshot, connectionTimedOut };
 }

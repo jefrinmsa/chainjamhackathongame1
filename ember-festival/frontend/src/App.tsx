@@ -26,7 +26,7 @@ import {
 } from './types/game.ts';
 
 export function App() {
-  const { hostApi, snapshot, isStandalone } = useCasinoHost();
+  const { hostApi, snapshot, connectionTimedOut } = useCasinoHost();
   const [configName, setConfigName] = useState<BetConfigName>('calm-night');
   const [wagerInput, setWagerInput] = useState('1');
   const [round, setRound] = useState<Round | null>(null);
@@ -54,6 +54,64 @@ export function App() {
     });
     return result.kind === 'limit' ? result.maxWager : undefined;
   }, [snapshot, configName]);
+
+  // ── All settled sessions for this game ──────────────────────────────
+  const allSettledSessions = useMemo(() => {
+    if (!snapshot) return [];
+    return snapshot.sessions.items.filter(
+      item =>
+        item.gameAddress === snapshot.integration.gameAddress &&
+        item.isSettled &&
+        item.raw.gameState !== undefined &&
+        item.raw.gameState.length === 10,
+    );
+  }, [snapshot]);
+
+  // ── Derived stats from settled sessions ─────────────────────────────
+  const stats = useMemo(() => {
+    const roundsPlayed = allSettledSessions.length;
+    let maxMultiplier = 0;
+    let maxMultiplierLabel = '—';
+    let biggestWin = 0n;
+    let currentStreak = 0;
+
+    // Consecutive win streak (non-Fizzle wins starting from the latest round)
+    for (let i = 0; i < allSettledSessions.length; i++) {
+      const item = allSettledSessions[i];
+      const units = settledPrizeUnits(item.raw.gameState as Hex) ?? 0n;
+      if (units > 0n) {
+        currentStreak++;
+      } else {
+        break; // Streak resets on first Fizzle (0 prize units)
+      }
+    }
+
+    // Best multiplier and biggest win amount
+    for (const item of allSettledSessions) {
+      const gd = item.raw.gameData;
+      const itemConfigName: BetConfigName = gd === '0x01' ? 'meteor-shower' : 'calm-night';
+      const units = settledPrizeUnits(item.raw.gameState as Hex) ?? 0n;
+      const resolved = resolveTier(itemConfigName, units);
+      const denom = BET_CONFIGS[itemConfigName].prizeDenominator;
+      const multiplierNum = Number(units) / Number(denom);
+      if (multiplierNum > maxMultiplier) {
+        maxMultiplier = multiplierNum;
+        maxMultiplierLabel = resolved?.multiplierLabel ?? `${multiplierNum}x`;
+      }
+      const wager = item.wager ? BigInt(item.wager) : 0n;
+      const payout = item.payout ? BigInt(item.payout) : (wager * units) / denom;
+      if (payout > biggestWin) {
+        biggestWin = payout;
+      }
+    }
+
+    return {
+      roundsPlayed,
+      bestMultiplier: maxMultiplierLabel,
+      biggestWin,
+      currentStreak,
+    };
+  }, [allSettledSessions]);
 
   // ── Settle from snapshot (mirrors the real App.tsx pattern) ──────────
   //
@@ -217,13 +275,133 @@ export function App() {
     launchLock.current = false; // Case 2: release lock on dismiss so player can launch again
   }, []);
 
+  // ── Auto-dismiss timer for fast outcomes ─────────────────────────────
+  useEffect(() => {
+    if (!round || round.status !== 'settled' || !round.tierName) return;
+
+    const tier = round.tierName;
+    let autoDismissMs: number | null = null;
+
+    if (tier === 'Fizzle' || tier === 'Small Bloom') {
+      autoDismissMs = 1800; // 1.8s for fast, frequent outcomes
+    } else if (tier === 'Bright Burst' || tier === 'Cascade') {
+      autoDismissMs = 2800; // 2.8s for mid-tier wins
+    }
+    // Golden Willow and Phoenix Finale: autoDismissMs is null (manual tap required)
+
+    if (autoDismissMs !== null) {
+      const timer = setTimeout(() => {
+        dismiss();
+      }, autoDismissMs);
+      return () => clearTimeout(timer);
+    }
+  }, [round, dismiss]);
+
   // ── Render ───────────────────────────────────────────────────────────
 
   if (!hostApi || !snapshot) {
+    if (!connectionTimedOut) {
+      return (
+        <div className="shell">
+          <header className="header">
+            <div className="title-wrap">
+              <h1 className="title">Ember Festival</h1>
+            </div>
+            <div className="header-right">
+              <button
+                className="sound-toggle"
+                onClick={() => setSoundEnabled(s => !s)}
+                aria-label={soundEnabled ? 'Mute sound' : 'Unmute sound'}
+              >
+                {soundEnabled ? '🔊' : '🔇'}
+              </button>
+            </div>
+          </header>
+
+          <main className="stage">
+            <BurstReveal
+              tier={undefined}
+              onAnimationDone={handleAnimationDone}
+              soundEnabled={soundEnabled}
+              configName={configName}
+            />
+          </main>
+
+          <div className="betting-dock">
+            <div className="connecting-dock">
+              <div className="connecting-spinner" />
+              <span className="connecting-text">Connecting to Casino Host…</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Static Preview Mode: rendered when opened standalone or after timeout
     return (
-      <div className="connecting">
-        <div className="connecting-spinner" />
-        <p>Connecting to host…</p>
+      <div className="shell">
+        <header className="header">
+          <div className="title-wrap">
+            <h1 className="title">Ember Festival</h1>
+            <span className="demo-chip">Preview Mode</span>
+          </div>
+          <div className="header-right">
+            <div className="preview-pills" title="Preview Firework Tiers (Keys 1-6)">
+              <span className="preview-label">Preview:</span>
+              {[
+                { id: 'Fizzle', label: '0x Dud' },
+                { id: 'Small Bloom', label: 'Bloom' },
+                { id: 'Bright Burst', label: 'Burst' },
+                { id: 'Cascade', label: 'Cascade' },
+                { id: 'Golden Willow', label: 'Willow' },
+                { id: 'Phoenix Finale', label: 'Phoenix 🔥', isPhoenix: true },
+              ].map(b => (
+                <button
+                  key={b.id}
+                  className={`preview-btn ${b.isPhoenix ? 'preview-btn--phoenix' : ''} ${selectedPreview === b.id ? 'preview-btn--active' : ''}`}
+                  onClick={() => handlePreviewClick(b.id as TierName)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+            <button
+              className="sound-toggle"
+              onClick={() => setSoundEnabled(s => !s)}
+              aria-label={soundEnabled ? 'Mute sound' : 'Unmute sound'}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+            </button>
+          </div>
+        </header>
+
+        <main className="stage">
+          <BurstReveal
+            tier={previewTier ?? undefined}
+            onAnimationDone={handleAnimationDone}
+            soundEnabled={soundEnabled}
+            configName={configName}
+          />
+        </main>
+
+        <div className="betting-dock preview-dock">
+          <div className="preview-dock-content">
+            <div className="preview-dock-info">
+              <span className="preview-badge">Standalone Demo</span>
+              <p className="preview-dock-desc">
+                Select any tier above (or press <strong>Keys 1–6</strong>) to test firework burst reveal animations.
+              </p>
+            </div>
+            <a
+              href="https://jam.chain.wtf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="preview-host-link"
+            >
+              Connect via Chain.wtf to Play ↗
+            </a>
+          </div>
+        </div>
       </div>
     );
   }
@@ -235,16 +413,8 @@ export function App() {
   // The tier to animate — active during 'animating' phase or dev preview
   const burstTier = round?.status === 'animating' ? round.tierName : (previewTier ?? undefined);
 
-  // History from snapshot
-  const history = snapshot.sessions.items
-    .filter(
-      item =>
-        item.gameAddress === snapshot.integration.gameAddress &&
-        item.isSettled &&
-        item.raw.gameState !== undefined &&
-        item.raw.gameState.length === 10,
-    )
-    .slice(0, 8);
+  // Recent history slice (up to 8 items)
+  const history = allSettledSessions.slice(0, 8);
 
   return (
     <div className="shell">
@@ -252,11 +422,6 @@ export function App() {
       <header className="header">
         <div className="title-wrap">
           <h1 className="title">Ember Festival</h1>
-          {isStandalone && (
-            <span className="demo-chip" title="Playable standalone demo outside chain.wtf iframe">
-              Playable Demo
-            </span>
-          )}
         </div>
         <div className="header-right">
           <div className="preview-pills" title="Preview Firework Tiers (Keys 1-6)">
@@ -298,6 +463,7 @@ export function App() {
           tier={burstTier}
           onAnimationDone={handleAnimationDone}
           soundEnabled={soundEnabled}
+          configName={configName}
         />
 
         {/* Settled result overlay */}
@@ -314,36 +480,67 @@ export function App() {
               {round.prizeUnits === 0n && (
                 <span className="result-payout result-payout--miss">No win</span>
               )}
-              <span className="result-dismiss">Tap to continue</span>
+              <span className="result-dismiss">
+                {round.tierName === 'Golden Willow' || round.tierName === 'Phoenix Finale'
+                  ? 'Tap to continue'
+                  : 'Tap or wait to continue'}
+              </span>
             </div>
           </div>
         )}
 
-        {/* Session history */}
+        {/* Session stats & history panel */}
         {history.length > 0 && (
-          <div className="history">
-            {history.map(item => {
-              // Determine which config was used from gameData
-              const gd = item.raw.gameData;
-              const itemConfigName: BetConfigName =
-                gd === '0x01' ? 'meteor-shower' : 'calm-night';
-              const units = settledPrizeUnits(item.raw.gameState as Hex);
-              const resolved =
-                units !== undefined
-                  ? resolveTier(itemConfigName, units)
-                  : undefined;
-              return (
-                <div key={item.sessionKey} className="history-row">
-                  <span className="history-id">#{item.sessionId}</span>
-                  <span className="history-tier">
-                    {resolved?.tierName ?? 'unknown'}
-                  </span>
-                  <span className="history-payout">
-                    {resolved?.multiplierLabel ?? '—'}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="history-panel">
+            <div className="stats-row">
+              <div className="stat-item" title="Rounds played this session">
+                <span className="stat-label">Rounds</span>
+                <span className="stat-val">{stats.roundsPlayed}</span>
+              </div>
+              <div className="stat-item" title="Best multiplier hit this session">
+                <span className="stat-label">Best Hit</span>
+                <span className="stat-val stat-val--gold">{stats.bestMultiplier}</span>
+              </div>
+              <div className="stat-item" title="Highest payout win">
+                <span className="stat-label">Max Win</span>
+                <span className="stat-val">
+                  {stats.biggestWin > 0n
+                    ? `${formatUnits(stats.biggestWin, decimals)} ${symbol}`
+                    : '—'}
+                </span>
+              </div>
+              <div className="stat-item" title="Current consecutive win streak">
+                <span className="stat-label">Streak</span>
+                <span className="stat-val stat-val--fire">
+                  {stats.currentStreak > 0 ? `🔥 ${stats.currentStreak}` : '0'}
+                </span>
+              </div>
+            </div>
+
+            <div className="history">
+              {history.map(item => {
+                // Determine which config was used from gameData
+                const gd = item.raw.gameData;
+                const itemConfigName: BetConfigName =
+                  gd === '0x01' ? 'meteor-shower' : 'calm-night';
+                const units = settledPrizeUnits(item.raw.gameState as Hex);
+                const resolved =
+                  units !== undefined
+                    ? resolveTier(itemConfigName, units)
+                    : undefined;
+                return (
+                  <div key={item.sessionKey} className="history-row">
+                    <span className="history-id">#{item.sessionId}</span>
+                    <span className="history-tier">
+                      {resolved?.tierName ?? 'unknown'}
+                    </span>
+                    <span className="history-payout">
+                      {resolved?.multiplierLabel ?? '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </main>
